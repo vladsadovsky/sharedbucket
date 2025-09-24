@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>File Browser</title>
+  <style>
+    body { font-family: sans-serif; padding: 2em; }
+    h2 { margin-top: 2em; }
+    ul { list-style: none; padding-left: 0; }
+    li { margin: 0.5em 0; }
+  </style>
+</head>
+<body>
+  <h1>📂 GitHub File Browser</h1>
+  <div id="file-list"></div>
+
+  <script>
+    const user = "vladsadovsky";       // ← Replace with your GitHub username
+    const repo = "sharedbucket";           // ← Replace with your repo name
+    const branch = "master";             // ← Or gh-pages if used
+
+    const folders = ["images", "csv"]; // ← Add folders you want to list
+
+    async function fetchFiles(folder) {
+      const url = `https://api.github.com/repos/${user}/${repo}/contents/${folder}?ref=${branch}`;
+      const res = await fetch(url);
+      const files = await res.json();
+
+      const section = document.createElement("section");
+      section.innerHTML = `<h2>📁 ${folder}</h2><ul>` +
+        files.map(file => `<li><a href="https://${user}.github.io/${repo}/${folder}/${file.name}" target="_blank">${file.name}</a></li>`).join("") +
+        `</ul>`;
+      document.getElementById("file-list").appendChild(section);
+    }
+
+    folders.forEach(fetchFiles);
+  </script>
+</body>
+</html>
