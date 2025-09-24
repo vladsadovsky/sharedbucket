@@ -1,0 +1,1 @@
+Shared bucket for photos and such
