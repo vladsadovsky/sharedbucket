@@ -1,39 +1,103 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>File Browser</title>
+  <meta charset="UTF-8" />
+  <title>File Browser for Shared Bucket</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    body { font-family: sans-serif; padding: 2em; }
-    h2 { margin-top: 2em; }
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, sans-serif; margin: 2rem; line-height: 1.5; }
+    h1 { margin-bottom: 1rem; }
+    h2 { margin-top: 2rem; }
     ul { list-style: none; padding-left: 0; }
-    li { margin: 0.5em 0; }
+    li { margin: .4rem 0; }
+    .note { font-size: .9rem; opacity: .75; }
+    .error { color: #b00020; }
+    code { background: rgba(127,127,127,.15); padding: .1rem .3rem; border-radius: .25rem; }
   </style>
 </head>
 <body>
-  <h1>📂 GitHub File Browser</h1>
+  <h1>📂 Shared Bucket</h1>
+  <p class="note">Listing files from this repo’s published branch.</p>
   <div id="file-list"></div>
 
   <script>
-    const user = "vladsadovsky";       // ← Replace with your GitHub username
-    const repo = "sharedbucket";           // ← Replace with your repo name
-    const branch = "master";             // ← Or gh-pages if used
+    const user   = "vladsadovsky";
+    const repo   = "sharedbucket";
+    const folders = ["photo", "csv"]; // ← Make sure these exist in the published branch
 
-    const folders = ["images", "csv"]; // ← Add folders you want to list
+    // Build links relative to current site (works on custom domain and on github.io)
+    const baseHref = (path) => {
+      // Use relative links so it works at root or subpath
+      return `${path}`.replace(/\/{2,}/g, "/");
+    };
 
-    async function fetchFiles(folder) {
-      const url = `https://api.github.com/repos/${user}/${repo}/contents/${folder}?ref=${branch}`;
-      const res = await fetch(url);
-      const files = await res.json();
-
-      const section = document.createElement("section");
-      section.innerHTML = `<h2>📁 ${folder}</h2><ul>` +
-        files.map(file => `<li><a href="https://${user}.github.io/${repo}/${folder}/${file.name}" target="_blank">${file.name}</a></li>`).join("") +
-        `</ul>`;
-      document.getElementById("file-list").appendChild(section);
+    // Try main, then master
+    async function pickBranch() {
+      for (const candidate of ["main", "master"]) {
+        const url = `https://api.github.com/repos/${user}/${repo}/branches/${candidate}`;
+        const res = await fetch(url);
+        if (res.ok) return candidate;
+      }
+      throw new Error("Could not detect branch (tried main and master).");
     }
 
-    folders.forEach(fetchFiles);
+    async function fetchFolder(folder, branch) {
+      const url = `https://api.github.com/repos/${user}/${repo}/contents/${encodeURIComponent(folder)}?ref=${encodeURIComponent(branch)}`;
+      const res = await fetch(url, { headers: { "Accept": "application/vnd.github.v3+json" }});
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`GitHub API error for "${folder}": ${res.status} ${res.statusText} — ${text}`);
+      }
+      const json = await res.json();
+      if (!Array.isArray(json)) {
+        throw new Error(`Unexpected API response for "${folder}": ${JSON.stringify(json)}`);
+      }
+      return json.filter(x => x.type === "file");
+    }
+
+    function renderFolder(folder, files) {
+      const section = document.createElement("section");
+      if (files.length === 0) {
+        section.innerHTML = `<h2>📁 ${folder}</h2><p class="note">No files found.</p>`;
+        return section;
+      }
+      const items = files.map(f => {
+        // Link to the file as served by Pages (relative path)
+        const name = f.name;
+        const href = baseHref(`${folder}/${encodeURIComponent(name)}`);
+        return `<li><a href="${href}" target="_blank" rel="noopener">${name}</a> <span class="note">(${Math.round(f.size/1024)} KB)</span></li>`;
+      }).join("");
+      section.innerHTML = `<h2>📁 ${folder}</h2><ul>${items}</ul>`;
+      return section;
+    }
+
+    async function main() {
+      const container = document.getElementById("file-list");
+      let branch;
+      try {
+        branch = await pickBranch();
+      } catch (e) {
+        container.innerHTML = `<p class="error">⚠️ ${e.message}</p>
+          <p class="note">Make sure your repository has a <code>main</code> or <code>master</code> branch and that GitHub Pages is publishing from it.</p>`;
+        return;
+      }
+
+      for (const folder of folders) {
+        const wrapper = document.createElement("div");
+        container.appendChild(wrapper);
+        try {
+          const files = await fetchFolder(folder, branch);
+          wrapper.replaceWith(renderFolder(folder, files));
+        } catch (e) {
+          wrapper.outerHTML = `<section><h2>📁 ${folder}</h2>
+            <p class="error">⚠️ ${e.message}</p>
+            <p class="note">Check that the folder exists in the published branch and the repo is public.</p></section>`;
+        }
+      }
+    }
+
+    main();
   </script>
 </body>
 </html>
